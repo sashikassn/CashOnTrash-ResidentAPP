@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "495363851767",
+    "firebase_url": "https://residentapp-a78b6.firebaseio.com",
+    "project_id": "residentapp-a78b6",
+    "storage_bucket": "residentapp-a78b6.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:495363851767:android:f7ef3a0f5d94adef",
+        "android_client_info": {
+          "package_name": "com.slash.cashontrash_residentapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "495363851767-mcn111bmph6pkb5krts63k52a55iqnd8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.slash.cashontrash_residentapp",
+            "certificate_hash": "dcf13d280eecc23a713210eb6744149e6d43a3b7"
+          }
+        },
+        {
+          "client_id": "495363851767-sal9fha0vaj5vph9kfeicr8psi5f79lq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcMZqJ5W9p3NWlm7VaTAlEcy5WHxaNUhg"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "495363851767-sal9fha0vaj5vph9kfeicr8psi5f79lq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
