@@ -33,6 +33,12 @@ public class MainActivity extends AppCompatActivity {
     FirebaseAuth auth;
     FirebaseDatabase db;
     DatabaseReference users;
+
+    private final static int PERMISSION = 1000;
+
+
+
+
     @Override
     protected void attachBaseContext(Context newBase) {
         super.attachBaseContext(CalligraphyContextWrapper.wrap(newBase));
@@ -49,28 +55,19 @@ public class MainActivity extends AppCompatActivity {
         auth = FirebaseAuth.getInstance();
         db = FirebaseDatabase.getInstance();
         users = db.getReference("Residents");
-
-
-
-
+        rootLayout = (RelativeLayout)findViewById(R.id.rootLayout);
 
         //init view
         btnRegister = (Button)findViewById(R.id.btnRegister);
-        btnSignIn = (Button)findViewById(R.id.btnSignIn);
-
-        rootLayout = (RelativeLayout)findViewById(R.id.rootLayout);
-
-
-        //Making Event
-
         btnRegister.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-
                 showRegisterDialog();
 
             }
         });
+
+        btnSignIn = (Button)findViewById(R.id.btnSignIn);
         btnSignIn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -133,7 +130,8 @@ public class MainActivity extends AppCompatActivity {
                     public void onSuccess(AuthResult authResult) {
                         waitingDialog.dismiss();
 
-                        startActivity(new Intent(MainActivity.this,Home.class));
+                        Intent intent = new Intent(MainActivity.this,Home.class);
+                        startActivity(intent);
                         finish();
                     }
                 }).addOnFailureListener(new OnFailureListener() {
