@@ -58,8 +58,9 @@
                   android:id="@+id/place_location"
                   android:layout_width="0dp"
                   android:layout_height="wrap_content"
-                  android:name="com.google.android.libraries.places.widget.AutocompleteSupportFragment"/>
+                  android:name="com.google.android.gms.location.places.ui.PlaceAutocompleteFragment"/>
 
+              <!--com.google.android.libraries.places.widget.AutocompleteSupportFragment-->
 
           </LinearLayout>
 
@@ -93,7 +94,7 @@
                     android:id="@+id/place_destination"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:name="com.google.android.libraries.places.widget.AutocompleteSupportFragment"/>
+                    android:name="com.google.android.gms.location.places.ui.PlaceAutocompleteFragment"/>
 
 
             </LinearLayout>

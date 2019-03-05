@@ -1,32 +1,102 @@
 package com.slash.cashontrash_residentapp;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.design.widget.NavigationView;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.Toast;
 
+import com.firebase.geofire.GeoFire;
+import com.firebase.geofire.GeoLocation;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesUtil;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.libraries.places.api.model.Place;
 import com.google.android.libraries.places.widget.AutocompleteSupportFragment;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.slash.cashontrash_residentapp.Helper.CustomInfoWindow;
 
 import java.util.Arrays;
 
 public class  Home extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback {
+        implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
 
     SupportMapFragment mapFragment;
     //AutocompleteSupportFragment mapFragment;
 
+
+    //location
+    private GoogleMap mMap;
+    private static final int MY_PERMISSION_REQUEST_CODE = 7192;
+    private static final int PLAY_SERVICE_RESOLUTION_REQUEST = 300193;
+
+    private LocationRequest mLocationRequest;
+    private GoogleApiClient mGoogleApiClient;
+    private Location mLastLocation;
+
+
+    private static int UPDATE_INTERVAL = 5000;
+    private static int FATEST_INTERVAL = 3000;
+    private static int DISPLACEMENT = 10;
+
+
+    DatabaseReference ref;
+    GeoFire geoFire;
+
+    Marker mUserMarker;
+
+    //BottomSheet
+    ImageView imgExpandable;
+    BottomSheetCollectorFragment mBottomSheet;
+
+    Button btnPickupRequest;
+
+
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode){
+            case MY_PERMISSION_REQUEST_CODE:
+                if(grantResults.length >0 && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                    if(checkPlayservices()){
+                        buildGoogleApiClient();
+                        createLocationRequest();
+                            displayLocation();
+
+                    }
+                }
+                break;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +121,155 @@ public class  Home extends AppCompatActivity
 //        mapFragment.setPlaceFields(Arrays.asList(Place.Field.ID,Place.Field.NAME));
 
         mapFragment.getMapAsync(this);
+
+
+        ref = FirebaseDatabase.getInstance().getReference("TrashCollectors");
+        geoFire = new GeoFire(ref);
+
+        //init view
+        imgExpandable = (ImageView) findViewById(R.id.imgExpandable);
+        //mBottomSheet = BottomSheetCollectorFragment.newInstance("Collector bottom sheet");
+            mBottomSheet = (BottomSheetCollectorFragment) BottomSheetCollectorFragment.newInstance("Collector bottom sheet");
+            imgExpandable.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+
+                    mBottomSheet.show(getSupportFragmentManager(),mBottomSheet.getTag());
+
+                }
+            });
+
+            btnPickupRequest = (Button) findViewById(R.id.btnPickupRequest);
+            btnPickupRequest.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    requestPickupHere(FirebaseAuth.getInstance().getCurrentUser().getUid());
+                    
+                }
+            });
+
+        setUpLocation();
+
+
+    }
+
+    private void requestPickupHere(String uid) {
+
+        DatabaseReference dbRequest = FirebaseDatabase.getInstance().getReference("TrashPickRequest");
+        GeoFire mGeofire = new GeoFire(dbRequest);
+        mGeofire.setLocation(uid,new GeoLocation(mLastLocation.getLatitude(),mLastLocation.getLongitude()));
+
+
+        if(mUserMarker.isVisible())
+            mUserMarker.remove();
+
+        //add new Marker
+
+      mUserMarker=   mMap.addMarker(new MarkerOptions().title("Pick My Trash Here!").snippet("")
+        .position(new LatLng(mLastLocation.getLatitude(),mLastLocation.getLongitude()))
+        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)));
+
+      mUserMarker.showInfoWindow();
+
+      btnPickupRequest.setText("Notifying Your Trash Collector.....");
+
+
+    }
+
+
+    private void setUpLocation() {
+
+        if(ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+            //Request Runtime permissions
+            ActivityCompat.requestPermissions(this,new String[]{
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+            },MY_PERMISSION_REQUEST_CODE);
+        }  else {
+
+            if(checkPlayservices()){
+                buildGoogleApiClient();
+                createLocationRequest();
+                    displayLocation();
+
+            }
+        }
+    }
+
+    private void displayLocation() {
+        if(ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+            return;
+        }
+        mLastLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
+
+        if(mLastLocation !=null){
+                final double latitude = mLastLocation.getLatitude();
+                final double longitude = mLastLocation.getLongitude();
+
+
+                //Update to the Firebase
+                geoFire.setLocation(FirebaseAuth.getInstance().getCurrentUser().getUid(), new GeoLocation(latitude, longitude), new GeoFire.CompletionListener() {
+                    @Override
+                    public void onComplete(String key, DatabaseError error) {
+
+
+                        //Add Marker
+                        if(mUserMarker != null)
+                            mUserMarker.remove();  //remove already marker
+
+                        mUserMarker = mMap.addMarker(new MarkerOptions().position(new LatLng(latitude,longitude)).title("Your Location"));
+
+                        //Move Camera to the position
+                        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latitude,longitude),15.0f));
+
+                    }
+                });
+                Log.d("SLASH",String.format("Your Location was changed : %f / %f",latitude,longitude));
+
+        }
+        else {
+            Log.d("ERROR","Cannot get your Location !");
+
+        }
+    }
+
+    private void createLocationRequest() {
+
+        mLocationRequest = new LocationRequest();
+        mLocationRequest.setInterval(UPDATE_INTERVAL);
+        mLocationRequest.setFastestInterval(FATEST_INTERVAL);
+        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        mLocationRequest.setSmallestDisplacement(DISPLACEMENT);
+    }
+
+    private void buildGoogleApiClient() {
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .build();
+        mGoogleApiClient.connect();
+
+    }
+
+    private boolean checkPlayservices() {
+
+        int resultCode = GooglePlayServicesUtil.isGooglePlayServicesAvailable(this);
+        if(resultCode != ConnectionResult.SUCCESS){
+            if(GooglePlayServicesUtil.isUserRecoverableError(resultCode))
+                GooglePlayServicesUtil.getErrorDialog(resultCode,this,PLAY_SERVICE_RESOLUTION_REQUEST).show();
+            else {
+                Toast.makeText(this,"This device is not Supported.",Toast.LENGTH_SHORT).show();
+                finish();
+
+            }
+            return false;
+
+
+        }
+        return true;
     }
 
     @Override
@@ -112,14 +331,48 @@ public class  Home extends AppCompatActivity
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        //sample marker
 
-        googleMap.addMarker(new MarkerOptions()
-        .position(new LatLng(6.927079,79.861244))
-        .title("Colombo"));
 
-        googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(6.927079,79.861244),13));
+        mMap = googleMap;
+        mMap.getUiSettings().setZoomControlsEnabled(true);
+        mMap.getUiSettings().setZoomGesturesEnabled(true);
+        mMap.setInfoWindowAdapter(new CustomInfoWindow(this));
 
+
+
+    }
+
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+                displayLocation();
+                startLocationUpdates();
+                
+
+    }
+
+    private void startLocationUpdates() {
+        if(ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+            return;
+        }
+        LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient,mLocationRequest,this);
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        mGoogleApiClient.connect();
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+
+        mLastLocation = location;
+        displayLocation();
 
 
     }
