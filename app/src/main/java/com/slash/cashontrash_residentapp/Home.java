@@ -23,6 +23,8 @@ import android.widget.Toast;
 
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
+import com.firebase.geofire.GeoQuery;
+import com.firebase.geofire.GeoQueryEventListener;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -40,10 +42,14 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.libraries.places.api.model.Place;
 import com.google.android.libraries.places.widget.AutocompleteSupportFragment;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+import com.slash.cashontrash_residentapp.Common.Common;
 import com.slash.cashontrash_residentapp.Helper.CustomInfoWindow;
+import com.slash.cashontrash_residentapp.Model.Resident;
 
 import java.util.Arrays;
 
@@ -79,6 +85,20 @@ public class  Home extends AppCompatActivity
     BottomSheetCollectorFragment mBottomSheet;
 
     Button btnPickupRequest;
+
+
+    boolean isCollectorFound=false;
+    String collectorId =  "";
+    int radius = 1;  //1km
+
+    int distance = 1;
+
+     private static final int LIMIT = 3;
+
+
+
+
+
 
 
 
@@ -123,8 +143,7 @@ public class  Home extends AppCompatActivity
         mapFragment.getMapAsync(this);
 
 
-        ref = FirebaseDatabase.getInstance().getReference("TrashCollectors");
-        geoFire = new GeoFire(ref);
+
 
         //init view
         imgExpandable = (ImageView) findViewById(R.id.imgExpandable);
@@ -155,7 +174,7 @@ public class  Home extends AppCompatActivity
 
     private void requestPickupHere(String uid) {
 
-        DatabaseReference dbRequest = FirebaseDatabase.getInstance().getReference("TrashPickRequest");
+        DatabaseReference dbRequest = FirebaseDatabase.getInstance().getReference(Common.trashpickup_request_tbl);
         GeoFire mGeofire = new GeoFire(dbRequest);
         mGeofire.setLocation(uid,new GeoLocation(mLastLocation.getLatitude(),mLastLocation.getLongitude()));
 
@@ -174,6 +193,55 @@ public class  Home extends AppCompatActivity
       btnPickupRequest.setText("Notifying Your Trash Collector.....");
 
 
+      findCollector();
+
+    }
+
+    private void findCollector() {
+
+        DatabaseReference trashcollectors = FirebaseDatabase.getInstance().getReference(Common.collector_tbl);
+        GeoFire gfcollectors = new GeoFire(trashcollectors);
+
+        GeoQuery geoQuery = gfcollectors.queryAtLocation(new GeoLocation(mLastLocation.getLatitude(),mLastLocation.getLongitude()),radius);
+        geoQuery.removeAllListeners();
+        geoQuery.addGeoQueryEventListener(new GeoQueryEventListener() {
+            @Override
+            public void onKeyEntered(String key, GeoLocation location) {
+                        //if collector found
+                if(isCollectorFound){
+                    isCollectorFound = true;
+                    collectorId = key;
+                    btnPickupRequest.setText("CALL the TRASH COLLECTOR");
+                    Toast.makeText(Home.this,""+key,Toast.LENGTH_SHORT).show();
+
+                }
+            }
+
+            @Override
+            public void onKeyExited(String key) {
+
+            }
+
+            @Override
+            public void onKeyMoved(String key, GeoLocation location) {
+
+            }
+
+            @Override
+            public void onGeoQueryReady() {
+                //if not collector found near, increase the distance
+                if (!isCollectorFound){
+                    radius++;
+                    findCollector();
+
+                }
+            }
+
+            @Override
+            public void onGeoQueryError(DatabaseError error) {
+
+            }
+        });
     }
 
 
@@ -209,10 +277,10 @@ public class  Home extends AppCompatActivity
                 final double longitude = mLastLocation.getLongitude();
 
 
-                //Update to the Firebase
-                geoFire.setLocation(FirebaseAuth.getInstance().getCurrentUser().getUid(), new GeoLocation(latitude, longitude), new GeoFire.CompletionListener() {
-                    @Override
-                    public void onComplete(String key, DatabaseError error) {
+//                //Update to the Firebase
+//                geoFire.setLocation(FirebaseAuth.getInstance().getCurrentUser().getUid(), new GeoLocation(latitude, longitude), new GeoFire.CompletionListener() {
+//                    @Override
+//                    public void onComplete(String key, DatabaseError error) {
 
 
                         //Add Marker
@@ -224,8 +292,12 @@ public class  Home extends AppCompatActivity
                         //Move Camera to the position
                         mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latitude,longitude),15.0f));
 
-                    }
-                });
+//                    }
+//                });
+                            loadAllAvailableCollectors();
+
+
+
                 Log.d("SLASH",String.format("Your Location was changed : %f / %f",latitude,longitude));
 
         }
@@ -233,6 +305,72 @@ public class  Home extends AppCompatActivity
             Log.d("ERROR","Cannot get your Location !");
 
         }
+    }
+
+    private void loadAllAvailableCollectors() {
+        //load all collectors around 3km
+
+        DatabaseReference collectorlocation = FirebaseDatabase.getInstance().getReference(Common.collector_tbl);
+        GeoFire gf = new GeoFire(collectorlocation);
+
+        GeoQuery geoQuery = gf.queryAtLocation(new GeoLocation(mLastLocation.getLatitude(),mLastLocation.getLongitude()),distance);
+        geoQuery.removeAllListeners();
+
+
+        geoQuery.addGeoQueryEventListener(new GeoQueryEventListener() {
+            @Override
+            public void onKeyEntered(String key, final GeoLocation location) {
+
+                //use key to get email from the table users
+                //table users is table when collector register account an update information
+                //open collector to check table name
+
+                FirebaseDatabase.getInstance().getReference(Common.user_collector_tbl)
+                        .child(key).addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                        Resident resident = dataSnapshot.getValue(Resident.class);
+
+
+                        //add collector to the map
+                        mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude,location.longitude))
+                        .flat(true).title(resident.getName()).snippet("Phone: "+resident.getPhone()).icon(BitmapDescriptorFactory.fromResource(R.drawable.truck)));
+
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError databaseError) {
+
+                    }
+                });
+            }
+
+            @Override
+            public void onKeyExited(String key) {
+
+            }
+
+            @Override
+            public void onKeyMoved(String key, GeoLocation location) {
+
+            }
+
+            @Override
+            public void onGeoQueryReady() {
+                if (distance <=LIMIT )//3km distance
+                {
+                    distance++;
+                    loadAllAvailableCollectors();
+
+                }
+            }
+
+            @Override
+            public void onGeoQueryError(DatabaseError error) {
+
+            }
+        });
+
     }
 
     private void createLocationRequest() {

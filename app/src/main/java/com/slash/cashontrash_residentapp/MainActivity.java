@@ -22,6 +22,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.rengwuxian.materialedittext.MaterialEditText;
+import com.slash.cashontrash_residentapp.Common.Common;
 import com.slash.cashontrash_residentapp.Model.Resident;
 
 import dmax.dialog.SpotsDialog;
@@ -54,7 +55,7 @@ public class MainActivity extends AppCompatActivity {
         //init firebase
         auth = FirebaseAuth.getInstance();
         db = FirebaseDatabase.getInstance();
-        users = db.getReference("Residents");
+        users = db.getReference(Common.user_resident_tbl);
         rootLayout = (RelativeLayout)findViewById(R.id.rootLayout);
 
         //init view
