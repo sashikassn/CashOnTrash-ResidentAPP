@@ -2,6 +2,7 @@ package com.slash.cashontrash_residentapp;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.location.Location;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -21,6 +22,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.bumptech.glide.load.engine.Resource;
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
 import com.firebase.geofire.GeoQuery;
@@ -37,21 +39,29 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MapStyleOptions;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.libraries.places.api.model.Place;
-import com.google.android.libraries.places.widget.AutocompleteSupportFragment;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
+import com.google.firebase.iid.FirebaseInstanceId;
+import com.google.gson.Gson;
 import com.slash.cashontrash_residentapp.Common.Common;
 import com.slash.cashontrash_residentapp.Helper.CustomInfoWindow;
+import com.slash.cashontrash_residentapp.Model.FCMResponse;
+import com.slash.cashontrash_residentapp.Model.Notification;
 import com.slash.cashontrash_residentapp.Model.Resident;
+import com.slash.cashontrash_residentapp.Model.Sender;
+import com.slash.cashontrash_residentapp.Model.Token;
+import com.slash.cashontrash_residentapp.Remote.IFCMService;
 
-import java.util.Arrays;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class  Home extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
@@ -93,8 +103,12 @@ public class  Home extends AppCompatActivity
 
     int distance = 1;
 
-     private static final int LIMIT = 3;
+     private static final int LIMIT = 10;
 
+
+     //Send Alert
+
+    IFCMService mService;
 
 
 
@@ -125,6 +139,8 @@ public class  Home extends AppCompatActivity
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+
+        mService = Common.getIFCMService();
 
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(
@@ -161,15 +177,78 @@ public class  Home extends AppCompatActivity
             btnPickupRequest = (Button) findViewById(R.id.btnPickupRequest);
             btnPickupRequest.setOnClickListener(new View.OnClickListener() {
                 @Override
-                public void onClick(View v) {
-                    requestPickupHere(FirebaseAuth.getInstance().getCurrentUser().getUid());
+                public void onClick(View view) {
+
+                    if(!isCollectorFound)
+                        requestPickupHere(FirebaseAuth.getInstance().getCurrentUser().getUid());
+                    else
+                        sendRequesttoCollector(collectorId);
                     
                 }
             });
 
         setUpLocation();
 
+        updateFirebaseToken();
 
+    }
+
+    private void updateFirebaseToken() {
+
+        FirebaseDatabase db = FirebaseDatabase.getInstance();
+        DatabaseReference tokens = db.getReference(Common.token_tbl);
+
+
+        Token token = new Token(FirebaseInstanceId.getInstance().getToken());
+        tokens.child(FirebaseAuth.getInstance().getCurrentUser().getUid())
+                .setValue(token);
+    }
+
+    private void sendRequesttoCollector(String collectorId) {
+
+        DatabaseReference tokens = FirebaseDatabase.getInstance().getReference(Common.token_tbl);
+
+        tokens.orderByKey().equalTo(collectorId)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                        for(DataSnapshot postSnapShot:dataSnapshot.getChildren()){
+                            Token token = postSnapShot.getValue(Token.class); //getting token object from db with key
+
+
+                            String json_lat_lng = new Gson().toJson(new LatLng(mLastLocation.getLatitude(),mLastLocation.getLongitude()));
+
+                            Notification data = new Notification("SLASH",json_lat_lng);
+                            Sender content = new Sender(token.getToken(),data);
+
+                            mService.sendMessage(content)
+                                    .enqueue(new Callback<FCMResponse>() {
+                                        @Override
+                                        public void onResponse(Call<FCMResponse> call, Response<FCMResponse> response) {
+                                            if(response.body().success == 1)
+                                                Toast.makeText(Home.this,"Request Send !",Toast.LENGTH_SHORT).show();
+                                            else
+                                                Toast.makeText(Home.this,"Failed to send",Toast.LENGTH_SHORT).show();
+
+
+
+                                        }
+
+                                        @Override
+                                        public void onFailure(Call<FCMResponse> call, Throwable t) {
+                                            Log.e("ERROR",t.getMessage());
+
+                                        }
+                                    });
+
+                        }
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError databaseError) {
+
+                    }
+                });
     }
 
     private void requestPickupHere(String uid) {
@@ -287,7 +366,7 @@ public class  Home extends AppCompatActivity
                         if(mUserMarker != null)
                             mUserMarker.remove();  //remove already marker
 
-                        mUserMarker = mMap.addMarker(new MarkerOptions().position(new LatLng(latitude,longitude)).title("Your Location"));
+                        mUserMarker = mMap.addMarker(new MarkerOptions().position(new LatLng(latitude,longitude)).title("Your Location").icon(BitmapDescriptorFactory.fromResource(R.drawable.icon)));
 
                         //Move Camera to the position
                         mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latitude,longitude),15.0f));
@@ -334,7 +413,8 @@ public class  Home extends AppCompatActivity
 
                         //add collector to the map
                         mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude,location.longitude))
-                        .flat(true).title(resident.getName()).snippet("Phone: "+resident.getPhone()).icon(BitmapDescriptorFactory.fromResource(R.drawable.truck)));
+                        .flat(true).title(resident.getName()).snippet("Phone: "+resident.getPhone()));
+//                        .icon(BitmapDescriptorFactory.fromResource(R.drawable.truck))
 
                     }
 
@@ -469,6 +549,17 @@ public class  Home extends AppCompatActivity
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
+
+
+        try{
+            boolean isSuccess = googleMap.setMapStyle(MapStyleOptions.loadRawResourceStyle(this,R.raw.my_map_style));
+
+            if(!isSuccess)
+                Log.e("ERROR","Map style load failed");
+        }
+        catch (Resources.NotFoundException ex){
+            ex.printStackTrace();
+        }
 
 
         mMap = googleMap;
