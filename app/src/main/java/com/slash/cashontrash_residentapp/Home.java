@@ -101,7 +101,7 @@ public class  Home extends AppCompatActivity
     String collectorId =  "";
     int radius = 1;  //1km
 
-    int distance = 1;
+    int distance = 3;
 
      private static final int LIMIT = 10;
 
@@ -413,7 +413,7 @@ public class  Home extends AppCompatActivity
 
                         //add collector to the map
                         mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude,location.longitude))
-                        .flat(true).title(resident.getName()).snippet("Phone: "+resident.getPhone()));
+                        .flat(true).title(resident.getPhone()).snippet("Phone: "+resident.getPhone()));
 //                        .icon(BitmapDescriptorFactory.fromResource(R.drawable.truck))
 
                     }
